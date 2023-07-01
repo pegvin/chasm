@@ -1,12 +1,17 @@
 CC:=gcc
+CXX:=g++
 CFLAGS:=-std=c99 -Wall -MMD -MP
+CXXFLAGS:=-std=c++11 -Wall -MMD -MP
 LFLAGS:=
 
 BIN        := chasm
 BUILD      := build
 BUILD_TYPE := Debug
-SOURCES    := src/main.c
-OBJECTS    := $(SOURCES:.c=.c.o)
+
+SOURCES_C   :=
+SOURCES_CPP := src/main.cpp src/TranslationUnit.cpp
+
+OBJECTS    := $(SOURCES_C:.c=.c.o) $(SOURCES_CPP:.cpp=.cpp.o)
 OBJECTS    := $(patsubst %,$(BUILD)/%,$(OBJECTS))
 DEPENDS    := $(OBJECTS:.o=.d)
 
@@ -29,9 +34,14 @@ $(BUILD)/%.c.o: %.c
 	@mkdir -p "$$(dirname "$@")"
 	@$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILD)/%.cpp.o: %.cpp
+	@echo "CXX -" $<
+	@mkdir -p "$$(dirname "$@")"
+	@$(CXX) $(CXXFLAGS) -c $< -o $@
+
 $(BIN): $(OBJECTS)
 	@echo Linking $@
-	@$(CC) $(CFLAGS) $(LFLAGS) $(OBJECTS) -o $@
+	@$(CXX) $(LFLAGS) $(OBJECTS) -o $@
 
 .PHONY: run
 .PHONY: clean
