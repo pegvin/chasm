@@ -20,11 +20,11 @@ jobs:
       run: choco install mingw
 
     - name: Build
-      run: make all -j4
+      run: make all -j4 BUILD_TYPE=Release
 
     - name: Upload Artifacts
       uses: actions/upload-artifact@v2
       with:
         name: ${{ matrix.os }}
-        path: ./build/
+        path: ${{ matrix.os == 'windows-latest' && './chasm.exe' || './chasm' }}
         if-no-files-found: error
