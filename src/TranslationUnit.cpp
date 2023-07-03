@@ -157,11 +157,11 @@ unsigned char* TranslationUnit2Binary(const char* source, u32 len) {
 			Binary[Index + 1] = OpCode & 0x00FF;
 			Index += 2;
 			i += 2;
-			printf("OpCode: %X\n", OpCode);
 		} else {
 			printf("Invalid Token: '%s'\n", Token.c_str());
 			exit(1);
 		}
+		printf("OpCode: %04X\n", OpCode);
 	}
 
 	return Binary;
