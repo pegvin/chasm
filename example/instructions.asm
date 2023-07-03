@@ -1,2 +1,16 @@
-CLS
-LD Vx 0x00
+; LMAO ASS
+CLS ; THIS IS A COMMENT! XD ; 
+
+JP 0x2fe
+
+SE V2 0xFe
+
+SNE V4 0x6F
+
+SE V2 V4
+
+CALL 0x69E
+
+LD VE 0x83
+
+ADD V2 0x69
