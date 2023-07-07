@@ -2,14 +2,8 @@
 #define CHASM_TRANSLATION_UNIT_H_INCLUDED_ 1
 #pragma once
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+#include "types.hpp"
 
-unsigned char* TranslationUnit2Binary(const char* source, unsigned int len);
-
-#ifdef __cplusplus
-}
-#endif
+Vector<u16>* TranslationUnit2Binary(const char* source, unsigned int len);
 
 #endif // CHASM_TRANSLATION_UNIT_H_INCLUDED_

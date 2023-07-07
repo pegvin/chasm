@@ -30,10 +30,14 @@ int main(int argc, char** argv) {
 
 	printf("-----\n%s\n-----\n", _SourceCode);
 
-	u8* bin = TranslationUnit2Binary(_SourceCode, fSize + 1);
+	Vector<u16>* bin = TranslationUnit2Binary(_SourceCode, fSize + 1);
+
+	for (u16 instruction : *bin) {
+		printf("Instruction: %04X\n", instruction);
+	}
 
 	if (f) fclose(f);
 	if (_SourceCode) delete[] _SourceCode;
-	if (bin) delete[] bin;
+	if (bin) delete bin;
 	return 0;
 }
