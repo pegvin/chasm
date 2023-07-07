@@ -39,30 +39,35 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 	if (Lines.size() > 0) {
 		for (u32 lIdx = 0; lIdx < Lines.size(); lIdx++) {
 			String& Line = Lines[lIdx];
+
+			// First Filter Out All Of The Comments
 			for (u32 i = 0; i < Line.size(); i++) {
-				if (Line[i] == ';') {
+				if (
+					Line[i] == ';' ||
+					/* this weird hack checks if previous character is a ';' i.e. comment,
+					   because the while loop that checks for 'symbols' stops when it sees ';',
+					   and does the processing with symbols, and increases 'i' by the number of
+					   characters in the symbol, which becomes the problem since in the next
+					   iteration of the loop i is again increased by 1 thus if there was a ';'
+					   just after a symbol it is missed. */
+					(i > 0 && Line[i - 1] == ';')
+				) {
+					if (i > 0 && Line[i - 1] == ';') i--; // if previous character is a ';' set 'i' to it.
 					u32 commentLen = 0;
 					while ((Line.begin() + i + commentLen) != Line.end()) {
 						commentLen++;
 					}
-					Line.erase(i, commentLen);
-				}
-				if (Line.begin() + i == Line.end()) {
-					Tokens.push_back({
-						.type = TokenType::END,
-						.val  = "",
-						.line = lIdx,
-						.cols = i
-					});
-					continue;
+					if (commentLen > 0) {
+						Line.erase(i, commentLen);
+						Tokens.push_back({ TokenType::END, "", lIdx, i });
+					}
 				}
 
 				u32 symbolLen = 0;
-				while (
-					i + symbolLen < Line.size()        &&
-					!std::isspace(Line[i + symbolLen])
-				) {
-					if (Line[i + symbolLen] != ';') break;
+				while (i + symbolLen < Line.size() && !std::isspace(Line[i + symbolLen])) {
+					if (Line[i + symbolLen] == ';') {
+						break;
+					}
 					symbolLen++;
 				}
 
@@ -75,12 +80,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 					});
 
 					if (Line.begin() + i + symbolLen == Line.end()) {
-						Tokens.push_back({
-							.type = TokenType::END,
-							.val = "",
-							.line = lIdx,
-							.cols = i
-						});
+						Tokens.push_back({ TokenType::END, "", lIdx, i });
 					}
 					i += symbolLen;
 				}
@@ -89,6 +89,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 	}
 
 	for (Token& Token : Tokens) {
+		// printf("Token: %6s - Position: %d:%d\n", Token.val.c_str(), Token.line, Token.cols);
 		std::transform(
 			Token.val.begin(), Token.val.end(), Token.val.begin(),
 			[](unsigned char c) { return std::tolower(c); }
@@ -110,54 +111,73 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 			Binary->push_back(0x00E0);
 		} else if (Token.val == "ret") {
 			Binary->push_back(0x00EE);
-		} else if (Token.val == "jp") {
-			auto& AddrToJmp = Tokens[TokenI + 1];
-			if (AddrToJmp.type == TokenType::END) goto TooFewArgsError;
-			u16 AddrToJmpParsed = 0;
-			AddrToJmpParsed = strtol(AddrToJmp.val.substr(2, 3).c_str(), NULL, 16);
+		} else if (Token.val == "jp" || Token.val == "call") {
+			auto& nnn = Tokens[TokenI + 1];
+			if (nnn.type == TokenType::END) goto TooFewArgsError;
+			u16 nnnParsed = 0;
+			nnnParsed = strtol(nnn.val.substr(2, 3).c_str(), NULL, 16);
+			nnnParsed = nnnParsed & 0x0FFF;
 
+			if (Token.val == "jp") OpCode = 0x1000 + nnnParsed;
+			else if (Token.val == "call") OpCode = 0x2000 + nnnParsed;
+
+			Binary->push_back(OpCode);
 			TokenI++; // increment index by 1 since we used that as our argument.
 		} else {
-			continue;
+			goto UnknownIdentifierError;
 		}
 
 		CHECK_TOO_MANY_ARGS();
 
 		continue; // by default skip the below code since we only want to run it via 'goto'.
 
-	TooManyArgsError:
-		for (std::size_t idx = TokenI + 1; Tokens[idx].type != TokenType::END; idx++) {
-			const auto& NextTok = Tokens[idx];
-			u32 NextTokLineNumChars = std::to_string(NextTok.line).size();
-
-			printf("%s:%d:%d: error: too many arguments for instruction '%s'\n", fileName, NextTok.line, NextTok.cols, Token.val.c_str());
-			printf("   %d | %s\n", NextTok.line, Lines[NextTok.line].c_str());
-			printf("   %*c |", NextTokLineNumChars, ' ');
-			printf(" %*c",
-				NextTok.cols + 1, '^'
-			);
-			for (u32 numTilde = 1; numTilde < NextTok.val.size(); numTilde++)
-				printf("~");
-
-			printf("\n");
-			printf("   %*c |\n", NextTokLineNumChars, ' ');
-			if (Tokens[idx + 1].type == TokenType::END) exit(1);
-		}
-
-	TooFewArgsError:
+		UnknownIdentifierError: {
 			u32 TokenLineNumChars = std::to_string(Token.line).size();
-			printf("%s:%d:%d: error: too few arguments for instruction '%s'\n", fileName, Token.line, Token.cols, Token.val.c_str());
+			printf("%s:%d:%d: error: unknown identifier '%s'\n", fileName, Token.line, Token.cols, Token.val.c_str());
 			printf("   %d | %s\n", Token.line, Lines[Token.line].c_str());
 			printf("   %*c |", TokenLineNumChars, ' ');
-			printf(" %*c",
-				Token.cols + 1, '^'
-			);
-			for (u32 numTilde = 1; numTilde < Token.val.size(); numTilde++)
+			printf(" %*c", Token.cols + 1, '^');
+			for (u32 numTilde = 1; numTilde < Token.val.size(); numTilde++) {
 				printf("~");
+			}
 
 			printf("\n");
 			printf("   %*c |\n", TokenLineNumChars, ' ');
 			exit(1);
+		}
+
+		TooManyArgsError: {
+			for (std::size_t idx = TokenI + 1; Tokens[idx].type != TokenType::END; idx++) {
+				const auto& NextTok = Tokens[idx];
+				u32 NextTokLineNumChars = std::to_string(NextTok.line).size();
+
+				printf("%s:%d:%d: error: too many arguments for instruction '%s'\n", fileName, NextTok.line, NextTok.cols, Token.val.c_str());
+				printf("   %d | %s\n", NextTok.line, Lines[NextTok.line].c_str());
+				printf("   %*c |", NextTokLineNumChars, ' ');
+				printf(" %*c", NextTok.cols + 1, '^');
+				for (u32 numTilde = 1; numTilde < NextTok.val.size(); numTilde++)
+					printf("~");
+
+				printf("\n");
+				printf("   %*c |\n", NextTokLineNumChars, ' ');
+				if (Tokens[idx + 1].type == TokenType::END) exit(1);
+			}
+		}
+
+		TooFewArgsError: {
+			u32 TokenLineNumChars = std::to_string(Token.line).size();
+			printf("%s:%d:%d: error: too few arguments for instruction '%s'\n", fileName, Token.line, Token.cols, Token.val.c_str());
+			printf("   %d | %s\n", Token.line, Lines[Token.line].c_str());
+			printf("   %*c |", TokenLineNumChars, ' ');
+			printf(" %*c", Token.cols + 1, '^');
+			for (u32 numTilde = 1; numTilde < Token.val.size(); numTilde++) {
+				printf("~");
+			}
+
+			printf("\n");
+			printf("   %*c |\n", TokenLineNumChars, ' ');
+			exit(1);
+		}
 	}
 
 #if 0
@@ -356,6 +376,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 		printf("OpCode: %04X\n", OpCode);
 	}
 #endif
+
 	return Binary;
 }
 
