@@ -18,8 +18,6 @@ int main(int argc, char** argv) {
 	size_t fSize = ftell(f);
 	fseek(f, 0, SEEK_SET);
 
-	printf("Assembling: %s\nSize: %ld bytes\n", InputFilePath, fSize);
-
 	char* _SourceCode = new char[fSize + 1];
 	memset(_SourceCode, '\0', fSize + 1);
 	if (fread(_SourceCode, 1, fSize, f) != fSize) {
@@ -27,8 +25,6 @@ int main(int argc, char** argv) {
 		delete[] _SourceCode;
 		return 1;
 	}
-
-	printf("-----\n%s\n-----\n", _SourceCode);
 
 	Vector<u16>* bin = TranslationUnit2Binary(InputFilePath, _SourceCode, fSize + 1);
 

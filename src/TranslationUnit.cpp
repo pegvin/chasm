@@ -40,20 +40,20 @@ u8  ParseRegisterNotation(const String& str, bool* _errFlag = nullptr) {
 u16 ParseNumberNotation(const String& str, bool* _errFlag = nullptr) {
 	u16 value = 0;
 	if (str.rfind("0x", 0) == 0) { // try to parse as hexadecimal
-		u16 result = std::strtol(str.substr(2, 3).c_str(), NULL, 16);
+		value = std::strtol(str.substr(2, 3).c_str(), NULL, 16);
 		/*                                     ^                  ^
 		                               3 Hex Digits (12 Bits)   Base 16 */
-		if (errno == EINVAL && result == 0 && _errFlag != nullptr) *_errFlag = true;
+		if (errno == EINVAL && value == 0 && _errFlag != nullptr) *_errFlag = true;
 	} else if (str.rfind("0b", 0) == 0) { // try to parse as binary
-		u16 result = std::strtol(str.substr(2, 12).c_str(), NULL, 2);
+		value = std::strtol(str.substr(2, 12).c_str(), NULL, 2);
 		/*                                     ^                  ^
 		                                     12 Bits            Base 2  */
-		if (errno == EINVAL && result == 0 && _errFlag != nullptr) *_errFlag = true;
+		if (errno == EINVAL && value == 0 && _errFlag != nullptr) *_errFlag = true;
 	} else { // try to parse as base-10 number
-		u16 result = std::strtol(str.c_str(), NULL, 10);
+		value = std::strtol(str.c_str(), NULL, 10);
 		/*                                          ^
 		                                         Base 10 */
-		if (errno == EINVAL && result == 0 && _errFlag != nullptr) *_errFlag = true;
+		if (errno == EINVAL && value == 0 && _errFlag != nullptr) *_errFlag = true;
 	}
 	return value;
 }
@@ -136,7 +136,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 	}
 
 	for (Token& Token : Tokens) {
-		// printf("Token: %6s - Position: %d:%d\n", Token.val.c_str(), Token.line, Token.cols);
+		printf("Token: %6s - Position: %d:%d\n", Token.val.c_str(), Token.line, Token.cols);
 		std::transform(
 			Token.val.begin(), Token.val.end(), Token.val.begin(),
 			[](unsigned char c) { return std::tolower(c); }
@@ -173,21 +173,76 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 		} else if (Token.val == "ret") {
 			CHECK_TOO_FEW_ARGS(0);
 			Binary->push_back(0x00EE);
-		} else if (Token.val == "jp" || Token.val == "call") {
+		} else if (
+			Token.val == "sys"  ||
+			Token.val == "jp"   ||
+			Token.val == "call" ||
+			Token.val == "ldi"  ||
+			Token.val == "jp0"  ||
+			Token.val == "skp"  ||
+			Token.val == "sknp" ||
+			Token.val == "dtld" ||
+			Token.val == "ldk"  ||
+			Token.val == "lddt" ||
+			Token.val == "ldst" ||
+			Token.val == "addi" ||
+			Token.val == "ldf"  ||
+			Token.val == "ldb"  ||
+			Token.val == "ld[i]"||
+			Token.val == "[i]ld"||
+			false
+		) {
 			CHECK_TOO_FEW_ARGS(1);
-			auto& nnn = Tokens[TokenI + 1];
-			if (nnn.type == TokenType::END) goto TooFewArgsError;
-			u16 nnnParsed = 0;
-			nnnParsed = strtol(nnn.val.substr(2, 3).c_str(), NULL, 16);
-			nnnParsed = nnnParsed & 0x0FFF;
+			const auto& Arg1 = Tokens[TokenI + 1];
 
-			if (Token.val == "jp") OpCode = 0x1000 + nnnParsed;
-			else if (Token.val == "call") OpCode = 0x2000 + nnnParsed;
+			bool errorOccurred1 = false;
+			u16 Arg1Num = ParseNumberNotation(Arg1.val, &errorOccurred1);
+
+			bool errorOccurred2 = false;
+			u16 Arg1Register = ParseRegisterNotation(Arg1.val, &errorOccurred2);
+
+			if (!errorOccurred1 && errorOccurred2) { // if first arg is 'nnn'
+				if      (Token.val == "sys")  OpCode = 0x0000;
+				else if (Token.val == "jp")   OpCode = 0x1000;
+				else if (Token.val == "call") OpCode = 0x2000;
+				else if (Token.val == "ldi")  OpCode = 0xA000;
+				else if (Token.val == "jp0")  OpCode = 0xB000;
+				else goto InvalidArgumentError;
+
+				OpCode = OpCode | (Arg1Num & 0x0FFF);
+			} else if (!errorOccurred2 && errorOccurred1) {
+				if      (Token.val == "skp")  OpCode = 0xE09E;
+				else if (Token.val == "sknp") OpCode = 0xE0A1;
+				else if (Token.val == "dtld") OpCode = 0xF007;
+				else if (Token.val == "ldk")  OpCode = 0xF00A;
+				else if (Token.val == "lddt") OpCode = 0xF015;
+				else if (Token.val == "ldst") OpCode = 0xF018;
+				else if (Token.val == "addi") OpCode = 0xF01E;
+				else if (Token.val == "ldf")  OpCode = 0xF029;
+				else if (Token.val == "ldb")  OpCode = 0xF033;
+				else if (Token.val == "ld[i]")OpCode = 0xF055;
+				else if (Token.val == "[i]ld")OpCode = 0xF065;
+				else goto InvalidArgumentError;
+
+				OpCode = OpCode | (Arg1Register << 4);
+			} else goto UnknownIdentifierError;
 
 			Binary->push_back(OpCode);
 			TokenI++; // increment index by 1 since we used that as our argument.
 		} else if (
-			Token.val == "se"
+			Token.val == "se"   ||
+			Token.val == "sne"  ||
+			Token.val == "ld"   ||
+			Token.val == "add"  ||
+			Token.val == "or"   ||
+			Token.val == "and"  ||
+			Token.val == "xor"  ||
+			Token.val == "sub"  ||
+			Token.val == "shr"  ||
+			Token.val == "subn" ||
+			Token.val == "shl"  ||
+			Token.val == "rnd"  ||
+			false
 		) {
 			CHECK_TOO_FEW_ARGS(2);
 			auto& Arg1 = Tokens[TokenI + 1];
@@ -200,17 +255,41 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 			u16 RegisterY = ParseRegisterNotation(Arg2.val, &errorOccurred2);
 
 			bool errorOccurred3 = false;
-			u16 Byte = ParseNumberNotation(Arg2.val, &errorOccurred1);
+			u16 Arg2Num = ParseNumberNotation(Arg2.val, &errorOccurred1);
 
-			// if arguments were indeed register indexes
-			if (!errorOccurred1 && !errorOccurred2) {
-			} else if (!errorOccurred1 && !errorOccurred3) {
+			if (!errorOccurred1 && !errorOccurred2) { // if arguments are Vx, Vy
+				if (Token.val == "se")        OpCode = 0x5000;
+				else if (Token.val == "sne")  OpCode = 0x9000;
+				else if (Token.val == "ld")   OpCode = 0x8000;
+				else if (Token.val == "add")  OpCode = 0x8004;
+				else if (Token.val == "or")   OpCode = 0x8001;
+				else if (Token.val == "and")  OpCode = 0x8002;
+				else if (Token.val == "xor")  OpCode = 0x8003;
+				else if (Token.val == "sub")  OpCode = 0x8005;
+				else if (Token.val == "shr")  OpCode = 0x8006;
+				else if (Token.val == "subn") OpCode = 0x8007;
+				else if (Token.val == "shl")  OpCode = 0x800E;
+				else goto UnknownIdentifierError;
+
+				OpCode = (((OpCode >> 8) | (RegisterX & 0x0F)) << 8) | OpCode & 0x000F;
+				OpCode = OpCode | (RegisterY << 4);
+			} else if (!errorOccurred1 && !errorOccurred3) { // arguments are Vx, byte
+				if (Token.val == "se")       OpCode = 0x3000;
+				else if (Token.val == "sne") OpCode = 0x4000;
+				else if (Token.val == "ld")  OpCode = 0x6000;
+				else if (Token.val == "add") OpCode = 0x7000;
+				else if (Token.val == "rnd") OpCode = 0xC000;
+				else goto UnknownIdentifierError;
+
+				OpCode = ((OpCode >> 8) | (RegisterX & 0x0F)) << 8;
+				OpCode = OpCode | (Arg2Num & 0x00FF);
 			} else {
 				if (errorOccurred1) TokenI += 1;
 				else if (errorOccurred2 || errorOccurred3) TokenI += 2;
 				goto UnknownIdentifierError;
 			}
 
+			Binary->push_back(OpCode);
 			TokenI += 2; // consumed 2 arguments
 		} else {
 			goto UnknownIdentifierError;
@@ -218,6 +297,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 
 		CHECK_TOO_MANY_ARGS();
 
+		printf("  %5s -> %04X\n", Token.val.c_str(), OpCode);
 		continue; // by default skip the below code since we only want to run it via 'goto'.
 
 		// shows an unknown identifier error for the symbol in at "TokenI" index
@@ -225,6 +305,23 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 			const auto& Tok = Tokens[TokenI];
 			u32 TokLineNumChars = std::to_string(Tok.line).size();
 			printf("%s:%d:%d: error: unknown identifier '%s'\n", fileName, Tok.line, Tok.cols, Tok.val.c_str());
+			printf("   %d | %s\n", Tok.line, Lines[Tok.line].c_str());
+			printf("   %*c |", TokLineNumChars, ' ');
+			printf(" %*c", Tok.cols + 1, '^');
+			for (u32 numTilde = 1; numTilde < Tok.val.size(); numTilde++) {
+				printf("~");
+			}
+
+			printf("\n");
+			printf("   %*c |\n", TokLineNumChars, ' ');
+			exit(1);
+		}
+
+		// shows an invalid argument error for the symbol in at "TokenI" index
+		InvalidArgumentError: {
+			const auto& Tok = Tokens[TokenI];
+			u32 TokLineNumChars = std::to_string(Tok.line).size();
+			printf("%s:%d:%d: error: invalid arguments to instruction '%s'\n", fileName, Tok.line, Tok.cols, Tok.val.c_str());
 			printf("   %d | %s\n", Tok.line, Lines[Tok.line].c_str());
 			printf("   %*c |", TokLineNumChars, ' ');
 			printf(" %*c", Tok.cols + 1, '^');
@@ -275,134 +372,6 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 		}
 	}
 
-#if 0
-	u8* Binary = new u8[len];
-	u32 Index = 0;
-	for (std::size_t i = 0; i < Tokens.size(); i++) {
-		String& Token = Tokens[i];
-		u16 OpCode;
-		if (Token == "cls") {
-			OpCode = 0x00E0;
-			Binary[Index] = OpCode >> 8;
-			Binary[Index + 1] = OpCode & 0x00FF;
-			Index += 2;
-		} else if (Token == "ret") {
-			OpCode = 0x00EE;
-			Binary[Index] = OpCode >> 8;
-			Binary[Index + 1] = OpCode & 0x00FF;
-			Index += 2;
-		} else if (Token == "jp" || Token == "call") { // JP addr OR CALL addr
-			OpCode = Token == "jp" ? 0x1000 : 0x2000; // 000 is the address to jump to and will be parsed now.
-			String AddrTok = Tokens[i + 1];
-			if (AddrTok.empty() || AddrTok.rfind("0x", 0) != 0) {
-				printf("Invalid Address Notation: '%s'\n", AddrTok.c_str());
-				exit(1);
-			}
-			u16 Addr = strtol(AddrTok.substr(2, 3).c_str(), NULL, 16);
-			OpCode += Addr;
-			Binary[Index] = OpCode >> 8;
-			Binary[Index + 1] = OpCode & 0x00FF;
-			Index += 2;
-			i += 1;
-		} else if (
-			Token == "se"   || // SE  Vx, byte
-			Token == "sne"  || // SNE Vx, byte
-			Token == "ld"   || // LD  Vx, byte
-			Token == "add"  || // ADD Vx, byte
-			Token == "or"   || // OR  Vx, Vy
-			Token == "and"  || // AND Vx, Vy
-			Token == "xor"  || // XOR Vx, Vy
-			Token == "sub"  || // AND Vx, Vy
-			Token == "shr"  || // SHR Vx {, Vy}
-			Token == "subn" || // SUBN Vx, Vy
-			Token == "shl"     // SHL Vx {, Vy}
-		) {
-			if (Token == "se") OpCode = 0x3000;
-			else if (Token == "sne") OpCode = 0x4000;
-			else if (Token == "ld") OpCode = 0x6000;
-			else if (Token == "add") OpCode = 0x7000;
-
-			const String& Arg1 = Tokens[i + 1];
-			const String& Arg2 = Tokens[i + 2];
-
-			/* Handles:
-				SE   Vx, Vy
-				LD   Vx, Vy
-				OR   Vx, Vy
-				AND  Vx, Vy
-				XOR  Vx, Vy
-				ADD  Vx, Vy
-				SUB  Vx, Vy
-				SHR  Vx {, Vy}
-				SUBN Vx, Vy
-				SHL  Vx {, Vy}
-				SNE  Vx, Vy
-			*/
-			if (Arg1[0] == 'v' && Arg2[0] == 'v') {
-				if      (Token == "se")   OpCode = 0x5000;
-				else if (Token == "ld")   OpCode = 0x8000;
-				else if (Token == "or")   OpCode = 0x8001;
-				else if (Token == "and")  OpCode = 0x8002;
-				else if (Token == "xor")  OpCode = 0x8003;
-				else if (Token == "add")  OpCode = 0x8004;
-				else if (Token == "sub")  OpCode = 0x8005;
-				else if (Token == "shr")  OpCode = 0x8006;
-				else if (Token == "subn") OpCode = 0x8007;
-				else if (Token == "shl")  OpCode = 0x800E;
-				else if (Token == "sne")  OpCode = 0x9000;
-				else {
-					printf("Invalid Token: '%s'\n", Token.c_str());
-					exit(1);
-				}
-
-				u8 Register1 = strtol(Arg1.substr(1, 1).c_str(), NULL, 16);
-				u8 Register2 = strtol(Arg2.substr(1, 1).c_str(), NULL, 16);
-				OpCode = ((OpCode >> 8) | (Register1 & 0x0F)) << 8;
-				OpCode = OpCode | ((Register2 & 0x0F) << 4);
-				if      (Token == "or")   OpCode = OpCode | (1   & 0x0F);
-				else if (Token == "and")  OpCode = OpCode | (2   & 0x0F);
-				else if (Token == "xor")  OpCode = OpCode | (3   & 0x0F);
-				else if (Token == "add")  OpCode = OpCode | (4   & 0x0F);
-				else if (Token == "sub")  OpCode = OpCode | (5   & 0x0F);
-				else if (Token == "shr")  OpCode = OpCode | (6   & 0x0F);
-				else if (Token == "subn") OpCode = OpCode | (7   & 0x0F);
-				else if (Token == "shl")  OpCode = OpCode | (0xE & 0x0F);
-			} else { // SE/SNE Vx, byte
-				u8 RegisterIndex = strtol(Arg1.substr(1, 1).c_str(), NULL, 16);
-				u8 ByteVal = 0;
-
-				if (Arg2.rfind("0x", 0) == 0) {
-					ByteVal = strtol(Arg2.substr(2, 2).c_str(), NULL, 16);
-				} else if (std::isdigit(Arg2[0])) {
-					for (char c : Arg2) {
-						if (!std::isdigit(c)) {
-							printf("Invalid Number Notation: '%s'\n", Arg2.c_str());
-							exit(1);
-						}
-					}
-					ByteVal = strtol(Arg2.c_str(), NULL, 10);
-				} else {
-					printf("Invalid Number Notation: '%s'\n", Arg2.c_str());
-					exit(1);
-				}
-
-				OpCode = ((OpCode >> 8) | (RegisterIndex & 0x0F)) << 8;
-				OpCode = OpCode | ByteVal;
-			}
-
-			Binary[Index] = OpCode >> 8;
-			Binary[Index + 1] = OpCode & 0x00FF;
-			Index += 2;
-			i += 2;
-		} else {
-			printf("Invalid Token: '%s'\n", Token.c_str());
-			exit(1);
-		}
-		printf("OpCode: %04X\n", OpCode);
-	}
-#endif
-
 	return Binary;
 }
-
 
