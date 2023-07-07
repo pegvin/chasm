@@ -17,9 +17,11 @@ DEPENDS    := $(OBJECTS:.o=.d)
 
 ifeq ($(BUILD_TYPE),Debug)
 	CFLAGS+=-O0 -g
+	CXXFLAGS+=-O0 -g
 else
 	ifeq ($(BUILD_TYPE),Release)
 		CFLAGS+=-O3
+		CXXFLAGS+=-O3
 	else
 $(error Unknown Build Type "$(BUILD_TYPE)")
 	endif
@@ -51,3 +53,4 @@ run: $(all)
 
 clean:
 	$(RM) -rv $(BIN) $(BUILD)
+
