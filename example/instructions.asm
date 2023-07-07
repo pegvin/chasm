@@ -6,7 +6,7 @@
 
 
 CLS ; <----- NO BOOM BOOM, NO ERROR
-JP 0x2fe;lmao comments with spaces work toooo omaigoddd
+JP 0x2fe;lmao comments without spaces work toooo omaigoddd
 SE V2 0xFe
 SNE V4 0x6F
 SE V2 V4
