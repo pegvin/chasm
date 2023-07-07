@@ -4,6 +4,6 @@
 
 #include "types.hpp"
 
-Vector<u16>* TranslationUnit2Binary(const char* source, unsigned int len);
+Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, unsigned int len);
 
 #endif // CHASM_TRANSLATION_UNIT_H_INCLUDED_

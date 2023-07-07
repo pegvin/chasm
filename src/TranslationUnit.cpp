@@ -23,7 +23,7 @@ struct Token {
 	u32       cols;
 };
 
-Vector<u16>* TranslationUnit2Binary(const char* source, u32 len) {
+Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u32 len) {
 	// Vector<String> Tokens;
 	Vector<String> Lines;
 	Vector<Token>  Tokens;
@@ -46,15 +46,23 @@ Vector<u16>* TranslationUnit2Binary(const char* source, u32 len) {
 						commentLen++;
 					}
 					Line.erase(i, commentLen);
-					break;
+				}
+				if (Line.begin() + i == Line.end()) {
+					Tokens.push_back({
+						.type = TokenType::END,
+						.val  = "",
+						.line = lIdx,
+						.cols = i
+					});
+					continue;
 				}
 
 				u32 symbolLen = 0;
 				while (
 					i + symbolLen < Line.size()        &&
-					!std::isspace(Line[i + symbolLen]) &&
-					Line[i + symbolLen] != ';'
+					!std::isspace(Line[i + symbolLen])
 				) {
+					if (Line[i + symbolLen] != ';') break;
 					symbolLen++;
 				}
 
@@ -80,12 +88,76 @@ Vector<u16>* TranslationUnit2Binary(const char* source, u32 len) {
 		}
 	}
 
+	for (Token& Token : Tokens) {
+		std::transform(
+			Token.val.begin(), Token.val.end(), Token.val.begin(),
+			[](unsigned char c) { return std::tolower(c); }
+		);
+	}
+
 	Vector<u16>* Binary = new Vector<u16>();
+
+	#define CHECK_TOO_MANY_ARGS() if (Tokens[TokenI + 1].type != TokenType::END) goto TooManyArgsError
 
 	for (u32 TokenI = 0; TokenI < Tokens.size(); TokenI++) {
 		Token& Token = Tokens[TokenI];
-		if (Token.type != TokenType::END)
-			printf("Token = %5s -> Position = %d:%d\n", Token.val.c_str(), Token.line, Token.cols);
+
+		if (Token.type == TokenType::END) continue;
+
+		u16 OpCode;
+
+		if (Token.val == "cls") {
+			Binary->push_back(0x00E0);
+		} else if (Token.val == "ret") {
+			Binary->push_back(0x00EE);
+		} else if (Token.val == "jp") {
+			auto& AddrToJmp = Tokens[TokenI + 1];
+			if (AddrToJmp.type == TokenType::END) goto TooFewArgsError;
+			u16 AddrToJmpParsed = 0;
+			AddrToJmpParsed = strtol(AddrToJmp.val.substr(2, 3).c_str(), NULL, 16);
+
+			TokenI++; // increment index by 1 since we used that as our argument.
+		} else {
+			continue;
+		}
+
+		CHECK_TOO_MANY_ARGS();
+
+		continue; // by default skip the below code since we only want to run it via 'goto'.
+
+	TooManyArgsError:
+		for (std::size_t idx = TokenI + 1; Tokens[idx].type != TokenType::END; idx++) {
+			const auto& NextTok = Tokens[idx];
+			u32 NextTokLineNumChars = std::to_string(NextTok.line).size();
+
+			printf("%s:%d:%d: error: too many arguments for instruction '%s'\n", fileName, NextTok.line, NextTok.cols, Token.val.c_str());
+			printf("   %d | %s\n", NextTok.line, Lines[NextTok.line].c_str());
+			printf("   %*c |", NextTokLineNumChars, ' ');
+			printf(" %*c",
+				NextTok.cols + 1, '^'
+			);
+			for (u32 numTilde = 1; numTilde < NextTok.val.size(); numTilde++)
+				printf("~");
+
+			printf("\n");
+			printf("   %*c |\n", NextTokLineNumChars, ' ');
+			if (Tokens[idx + 1].type == TokenType::END) exit(1);
+		}
+
+	TooFewArgsError:
+			u32 TokenLineNumChars = std::to_string(Token.line).size();
+			printf("%s:%d:%d: error: too few arguments for instruction '%s'\n", fileName, Token.line, Token.cols, Token.val.c_str());
+			printf("   %d | %s\n", Token.line, Lines[Token.line].c_str());
+			printf("   %*c |", TokenLineNumChars, ' ');
+			printf(" %*c",
+				Token.cols + 1, '^'
+			);
+			for (u32 numTilde = 1; numTilde < Token.val.size(); numTilde++)
+				printf("~");
+
+			printf("\n");
+			printf("   %*c |\n", TokenLineNumChars, ' ');
+			exit(1);
 	}
 
 #if 0

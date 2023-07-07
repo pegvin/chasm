@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
 
 	printf("-----\n%s\n-----\n", _SourceCode);
 
-	Vector<u16>* bin = TranslationUnit2Binary(_SourceCode, fSize + 1);
+	Vector<u16>* bin = TranslationUnit2Binary(InputFilePath, _SourceCode, fSize + 1);
 
 	for (u16 instruction : *bin) {
 		printf("Instruction: %04X\n", instruction);
