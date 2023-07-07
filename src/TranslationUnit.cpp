@@ -23,6 +23,41 @@ struct Token {
 	u32       cols;
 };
 
+// converts 'Vx' to a register index.
+u8  ParseRegisterNotation(const String& str, bool* _errFlag = nullptr) {
+	u8 result = 0;
+	if (std::tolower(str[0]) != 'v') {
+		*_errFlag = true;
+	} else {
+		result = std::strtol(str.substr(1, 1).c_str(), NULL, 16);
+		if (errno == EINVAL && result == 0 && _errFlag != nullptr) *_errFlag = true;
+	}
+
+	return result;
+}
+
+// parses '0xXXX' '124' '0b101100' etc.
+u16 ParseNumberNotation(const String& str, bool* _errFlag = nullptr) {
+	u16 value = 0;
+	if (str.rfind("0x", 0) == 0) { // try to parse as hexadecimal
+		u16 result = std::strtol(str.substr(2, 3).c_str(), NULL, 16);
+		/*                                     ^                  ^
+		                               3 Hex Digits (12 Bits)   Base 16 */
+		if (errno == EINVAL && result == 0 && _errFlag != nullptr) *_errFlag = true;
+	} else if (str.rfind("0b", 0) == 0) { // try to parse as binary
+		u16 result = std::strtol(str.substr(2, 12).c_str(), NULL, 2);
+		/*                                     ^                  ^
+		                                     12 Bits            Base 2  */
+		if (errno == EINVAL && result == 0 && _errFlag != nullptr) *_errFlag = true;
+	} else { // try to parse as base-10 number
+		u16 result = std::strtol(str.c_str(), NULL, 10);
+		/*                                          ^
+		                                         Base 10 */
+		if (errno == EINVAL && result == 0 && _errFlag != nullptr) *_errFlag = true;
+	}
+	return value;
+}
+
 Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u32 len) {
 	// Vector<String> Tokens;
 	Vector<String> Lines;
@@ -84,6 +119,18 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 					}
 					i += symbolLen;
 				}
+
+				// Handle Trailing Spaces And Shit
+				if (Tokens.back().type != TokenType::END) {
+					bool symbolsLeft = false;
+					for (u32 u = symbolLen; i + u < Line.size(); u++) {
+						if (!std::isspace(Line[i + u])) symbolsLeft = true;
+					}
+					if (!symbolsLeft) {
+						Tokens.push_back({ TokenType::END, "", lIdx, (u32)Line.size() - 1 });
+						i += Line.size() - symbolLen - 1;
+					}
+				}
 			}
 		}
 	}
@@ -98,20 +145,36 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 
 	Vector<u16>* Binary = new Vector<u16>();
 
-	#define CHECK_TOO_MANY_ARGS() if (Tokens[TokenI + 1].type != TokenType::END) goto TooManyArgsError
+	#define CHECK_TOO_MANY_ARGS() if (TokenI < Tokens.size() && Tokens[TokenI + 1].type != TokenType::END) goto TooManyArgsError
+	#define CHECK_TOO_FEW_ARGS(numExpected) \
+		ArgsExpected = numExpected, ArgsProvided = 0; \
+		if (TokenI + ArgsExpected >= Tokens.size()) { \
+			goto TooFewArgsError; \
+		} else { \
+			for (u32 i = 0; i < ArgsExpected; i++) { \
+				if (Tokens[TokenI + i + 1].type == TokenType::END) goto TooFewArgsError; \
+				ArgsProvided++; \
+			} \
+		}
 
 	for (u32 TokenI = 0; TokenI < Tokens.size(); TokenI++) {
 		Token& Token = Tokens[TokenI];
+
+		// Read-Only, Don't Modify It's Value Below It Will Cause Undefined Behavior.
+		u16 ArgsExpected = 0, ArgsProvided = 0;
 
 		if (Token.type == TokenType::END) continue;
 
 		u16 OpCode;
 
 		if (Token.val == "cls") {
+			CHECK_TOO_FEW_ARGS(0);
 			Binary->push_back(0x00E0);
 		} else if (Token.val == "ret") {
+			CHECK_TOO_FEW_ARGS(0);
 			Binary->push_back(0x00EE);
 		} else if (Token.val == "jp" || Token.val == "call") {
+			CHECK_TOO_FEW_ARGS(1);
 			auto& nnn = Tokens[TokenI + 1];
 			if (nnn.type == TokenType::END) goto TooFewArgsError;
 			u16 nnnParsed = 0;
@@ -123,6 +186,32 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 
 			Binary->push_back(OpCode);
 			TokenI++; // increment index by 1 since we used that as our argument.
+		} else if (
+			Token.val == "se"
+		) {
+			CHECK_TOO_FEW_ARGS(2);
+			auto& Arg1 = Tokens[TokenI + 1];
+			auto& Arg2 = Tokens[TokenI + 2];
+
+			bool errorOccurred1 = false;
+			u16 RegisterX = ParseRegisterNotation(Arg1.val, &errorOccurred1);
+
+			bool errorOccurred2 = false;
+			u16 RegisterY = ParseRegisterNotation(Arg2.val, &errorOccurred2);
+
+			bool errorOccurred3 = false;
+			u16 Byte = ParseNumberNotation(Arg2.val, &errorOccurred1);
+
+			// if arguments were indeed register indexes
+			if (!errorOccurred1 && !errorOccurred2) {
+			} else if (!errorOccurred1 && !errorOccurred3) {
+			} else {
+				if (errorOccurred1) TokenI += 1;
+				else if (errorOccurred2 || errorOccurred3) TokenI += 2;
+				goto UnknownIdentifierError;
+			}
+
+			TokenI += 2; // consumed 2 arguments
 		} else {
 			goto UnknownIdentifierError;
 		}
@@ -131,23 +220,26 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 
 		continue; // by default skip the below code since we only want to run it via 'goto'.
 
+		// shows an unknown identifier error for the symbol in at "TokenI" index
 		UnknownIdentifierError: {
-			u32 TokenLineNumChars = std::to_string(Token.line).size();
-			printf("%s:%d:%d: error: unknown identifier '%s'\n", fileName, Token.line, Token.cols, Token.val.c_str());
-			printf("   %d | %s\n", Token.line, Lines[Token.line].c_str());
-			printf("   %*c |", TokenLineNumChars, ' ');
-			printf(" %*c", Token.cols + 1, '^');
-			for (u32 numTilde = 1; numTilde < Token.val.size(); numTilde++) {
+			const auto& Tok = Tokens[TokenI];
+			u32 TokLineNumChars = std::to_string(Tok.line).size();
+			printf("%s:%d:%d: error: unknown identifier '%s'\n", fileName, Tok.line, Tok.cols, Tok.val.c_str());
+			printf("   %d | %s\n", Tok.line, Lines[Tok.line].c_str());
+			printf("   %*c |", TokLineNumChars, ' ');
+			printf(" %*c", Tok.cols + 1, '^');
+			for (u32 numTilde = 1; numTilde < Tok.val.size(); numTilde++) {
 				printf("~");
 			}
 
 			printf("\n");
-			printf("   %*c |\n", TokenLineNumChars, ' ');
+			printf("   %*c |\n", TokLineNumChars, ' ');
 			exit(1);
 		}
 
+		// shows too many arguments error for symbols from Tokens[TokenI + 1] until it is .type if not equal to "END"
 		TooManyArgsError: {
-			for (std::size_t idx = TokenI + 1; Tokens[idx].type != TokenType::END; idx++) {
+			for (std::size_t idx = TokenI + 1; idx < Tokens.size() && Tokens[idx].type != TokenType::END; idx++) {
 				const auto& NextTok = Tokens[idx];
 				u32 NextTokLineNumChars = std::to_string(NextTok.line).size();
 
@@ -164,9 +256,12 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 			}
 		}
 
+		/* shows to few arguments error, where expected number of arguments is "ArgsExpected",
+		   and number of arguments provided is "ArgsProvided"
+		*/
 		TooFewArgsError: {
 			u32 TokenLineNumChars = std::to_string(Token.line).size();
-			printf("%s:%d:%d: error: too few arguments for instruction '%s'\n", fileName, Token.line, Token.cols, Token.val.c_str());
+			printf("%s:%d:%d: error: too few arguments for instruction '%s', expected %d got %d\n", fileName, Token.line, Token.cols, Token.val.c_str(), ArgsExpected, ArgsProvided);
 			printf("   %d | %s\n", Token.line, Lines[Token.line].c_str());
 			printf("   %*c |", TokenLineNumChars, ' ');
 			printf(" %*c", Token.cols + 1, '^');
@@ -180,76 +275,6 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 		}
 	}
 
-#if 0
-	for (u32 i = 0; i < len; i++) {
-		if (source[i] == '\0') break;
-		if (source[i] == '\n') continue;
-		if (source[i] == ';') {
-			u32 commentLen = 0;
-			while (source[i + commentLen] != '\n') {
-				commentLen++;
-			}
-			i += commentLen;
-			Tokens.push_back("\n");
-		}
-
-		u32 symbolLen = 0;
-		while (!std::isspace(source[i + symbolLen]) && source[i + symbolLen] != ';') {
-			symbolLen++;
-		}
-
-		if (symbolLen > 0) {
-			auto Tok = String(source + i, symbolLen);
-			std::transform(Tok.begin(), Tok.end(), Tok.begin(), [](unsigned char c){ return std::tolower(c); });
-			Tokens.push_back(Tok);
-			// each instruction is separated by a new line character in the vector.
-			if (source[i + symbolLen] == '\n') {
-				Tokens.push_back("\n");
-			}
-			i += symbolLen;
-		}
-	}
-
-	// Vector<u16>* Binary = new Vector<u16>();
-	Binary->reserve(Tokens.size());
-
-	#define CHECK_TOO_MANY_ARGS() if (Tokens[i + 1] != "\n") goto TooManyArgsError
-
-	for (std::size_t i = 0; i < Tokens.size(); ++i) {
-		String& Token = Tokens[i];
-		u16 OpCode;
-
-		if (Token == "\n") continue;
-
-		if (Token == "cls") {
-			Binary->push_back(0x00E0);
-		} else if (Token == "ret") {
-			Binary->push_back(0x00EE);
-		} else if (Token == "jp") {
-			String& AddrToJmpStr = Tokens[i + 1];
-			if (AddrToJmpStr == "\n") goto TooFewArgsError;
-			u16 AddrToJmp = 0;
-			AddrToJmp = strtol(AddrToJmpStr.substr(2, 3).c_str(), NULL, 16);
-
-			i++; // increment index by 1 since we used that as our argument.
-		} else {
-			continue;
-		}
-
-		CHECK_TOO_MANY_ARGS();
-
-		continue; // by default skip the below code since we only want to run it via 'goto'.
-
-	TooManyArgsError:
-		for (std::size_t idx = i + 1; Tokens[idx] != "\n"; idx++) {
-			printf("Too many arguments to instruction '%s', Unknown '%s'\n", Token.c_str(), Tokens[idx].c_str());
-			if (Tokens[idx + 1] == "\n") exit(1); // if next symbol is a '\n' just exit.
-		}
-
-	TooFewArgsError:
-			printf("Too few arguments to instruction '%s'\n", Token.c_str());
-	}
-#endif
 #if 0
 	u8* Binary = new u8[len];
 	u32 Index = 0;
