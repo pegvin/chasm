@@ -1,5 +1,11 @@
-; LMAO ASS
-CLS ; THIS IS A COMMENT! XD ; 
+
+
+; Extra New Lines are for checking whether
+; parser is doing it's job or not, LMAO ASS, funi wor
+
+
+
+CLS ; <----- NO BOOM BOOM, NO ERROR
 JP 0x2fe
 SE V2 0xFe
 SNE V4 0x6F
