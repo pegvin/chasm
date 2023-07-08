@@ -14,8 +14,7 @@
 // converts 'Vx' to a register index.
 u8  ParseRegisterNotation(const String& str, bool* _errFlag = nullptr) {
 	u8 result = 0;
-	if (str.size() == 0 || str.c_str() == NULL) *_errFlag = true;
-	else if (std::tolower(str[0]) != 'v') {
+	if (std::tolower(str[0]) != 'v') {
 		*_errFlag = true;
 	} else {
 		result = std::strtol(str.substr(1, 1).c_str(), NULL, 16);
@@ -28,8 +27,7 @@ u8  ParseRegisterNotation(const String& str, bool* _errFlag = nullptr) {
 // parses '0xXXX' '124' '0b101100' etc.
 u16 ParseNumberNotation(const String& str, bool* _errFlag = nullptr) {
 	u16 value = 0;
-	if (str.size() == 0 || str.c_str() == NULL) *_errFlag = true;
-	else if (str.rfind("0x", 0) == 0) { // try to parse as hexadecimal
+	if (str.rfind("0x", 0) == 0) { // try to parse as hexadecimal
 		value = std::strtol(str.substr(2, 3).c_str(), NULL, 16);
 		/*                                     ^                  ^
 		                               3 Hex Digits (12 Bits)   Base 16 */
@@ -49,9 +47,9 @@ u16 ParseNumberNotation(const String& str, bool* _errFlag = nullptr) {
 }
 
 struct Token {
-	String val;
-	u32    line;
-	u32    cols;
+	String val  = "";
+	u32    line = 0;
+	u32    cols = 0;
 };
 
 typedef Vector<Token> LineTokenized;
@@ -86,10 +84,11 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 			}
 
 			if (SubStrPos > CharacterIndex) {
-				LineParsed.push_back({
-					Line.substr(CharacterIndex, SubStrPos - CharacterIndex),
-					LineIndex, CharacterIndex
-				});
+				struct Token t;
+				t.val = Line.substr(CharacterIndex, SubStrPos - CharacterIndex),
+				t.line = LineIndex;
+				t.cols = CharacterIndex;
+				LineParsed.push_back(t);
 				CharacterIndex += SubStrPos;
 			}
 		}
@@ -99,6 +98,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 		}
 	}
 
+	printf("-----\n");
 	for (LineTokenized& LineParsed : LinesParsed) {
 		for (Token& Token : LineParsed) {
 			printf("Token: %6s - Position: %d:%d\n", Token.val.c_str(), Token.line, Token.cols);
