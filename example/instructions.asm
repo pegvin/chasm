@@ -37,4 +37,5 @@ LDF  V3 ; Set I = location of sprite for digit Vx.
 LDB  V8 ; Store BCD representation of Vx in memory locations I, I+1, and I+2.
 LD[I] V7 ; Store registers V0 through Vx in memory starting at location I.
 [I]LD V3 ; Read registers V0 through Vx from memory starting at location I.
+drw V2 V7 9
 

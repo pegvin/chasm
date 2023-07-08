@@ -214,7 +214,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 				u16 RegisterY = ParseRegisterNotation(Arg2.val, &errorOccurred2);
 
 				bool errorOccurred3 = false;
-				u16 Arg2Num = ParseNumberNotation(Arg2.val, &errorOccurred1);
+				u16 Arg2Num = ParseNumberNotation(Arg2.val, &errorOccurred3);
 
 				if (!errorOccurred1 && !errorOccurred2) { // if arguments are Vx, Vy
 					if (Token.val == "se")        OpCode = 0x5000;
@@ -250,6 +250,31 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 
 				Binary->push_back(OpCode);
 				TokenI += 2; // consumed 2 arguments
+			} else if (Token.val == "drw") {
+				CHECK_TOO_FEW_ARGS(3);
+				OpCode = 0xD000;
+
+				const struct Token& Arg1 = LineParsed[TokenI + 1];
+				const struct Token& Arg2 = LineParsed[TokenI + 2];
+				const struct Token& Arg3 = LineParsed[TokenI + 3];
+
+				bool errorOccurred1 = false;
+				u16 RegisterX = ParseRegisterNotation(Arg1.val, &errorOccurred1);
+
+				bool errorOccurred2 = false;
+				u16 RegisterY = ParseRegisterNotation(Arg2.val, &errorOccurred2);
+
+				bool errorOccurred3 = false;
+				u16 Arg3Num = ParseNumberNotation(Arg3.val, &errorOccurred3);
+
+				if (!errorOccurred1 && !errorOccurred2 && !errorOccurred3) {
+					OpCode = OpCode | ((RegisterX & 0x000F) << 8);
+					OpCode = OpCode | ((RegisterY & 0x000F) << 4);
+					OpCode = OpCode | ((Arg3Num & 0x000F) << 0);
+				}
+
+				Binary->push_back(OpCode);
+				TokenI += 3;
 			} else {
 				goto UnknownIdentifierError;
 			}
