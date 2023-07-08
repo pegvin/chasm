@@ -77,6 +77,8 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 			}
 		}
 
+		if (Line.empty()) continue;
+
 		for (u32 CharacterIndex = 0; CharacterIndex < Line.size(); CharacterIndex++) {
 			u32 SubStrPos = CharacterIndex;
 			while (SubStrPos < Line.size() && !std::isspace(Line[SubStrPos])) {
@@ -89,7 +91,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 				t.line = LineIndex;
 				t.cols = CharacterIndex;
 				LineParsed.push_back(t);
-				CharacterIndex += SubStrPos;
+				CharacterIndex = SubStrPos;
 			}
 		}
 
@@ -98,16 +100,16 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 		}
 	}
 
-	printf("-----\n");
+	// printf("-----\n");
 	for (LineTokenized& LineParsed : LinesParsed) {
 		for (Token& Token : LineParsed) {
-			printf("Token: %6s - Position: %d:%d\n", Token.val.c_str(), Token.line, Token.cols);
+			// printf("Token: %6s - Position: %d:%d\n", Token.val.c_str(), Token.line, Token.cols);
 			std::transform(
 				Token.val.begin(), Token.val.end(), Token.val.begin(),
 				[](unsigned char c) { return std::tolower(c); }
 			);
 		}
-		printf("-----\n");
+		// printf("-----\n");
 	}
 
 	Vector<u16>* Binary = new Vector<u16>();
@@ -115,7 +117,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 	#define CHECK_TOO_MANY_ARGS() do { if (TokenI != (LineParsed.size() - 1)) goto TooManyArgsError; } while (0)
 	#define CHECK_TOO_FEW_ARGS(numExpected) do { \
 		ArgsExpected = numExpected; \
-		if (ArgsExpected > LineParsed.size()) goto TooFewArgsError; \
+		if (ArgsExpected > LineParsed.size() - 1) goto TooFewArgsError; \
 	} while(0)
 
 	for (const LineTokenized& LineParsed : LinesParsed) {
@@ -254,7 +256,6 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 
 			CHECK_TOO_MANY_ARGS();
 
-			printf("  %5s -> %04X\n", Token.val.c_str(), OpCode);
 			continue; // by default skip the below code since we only want to run it via 'goto'.
 
 			// shows an unknown identifier error for the symbol in at "TokenI" index

@@ -30,7 +30,7 @@ SKP  V6
 SKNP V3
 DTLD V2 ; Set V2 = delay timer value.
 LDK  V0 ; Wait for a key press, store the value of the key in V0.
-LTDT V1 ; Set delay timer = V1.
+LDDT V1 ; Set delay timer = V1.
 LDST V1 ; Set sound timer = V1.
 ADDI V0 ; Set I = I + V0.
 LDF  V3 ; Set I = location of sprite for digit Vx.
