@@ -28,8 +28,10 @@ int main(int argc, char** argv) {
 
 	Vector<u16>* bin = TranslationUnit2Binary(InputFilePath, _SourceCode, fSize + 1);
 
-	for (u16 instruction : *bin) {
-		printf("Instruction: %04X\n", instruction);
+	if (bin) {
+		for (u16 instruction : *bin) {
+			printf("Instruction: %04X\n", instruction);
+		}
 	}
 
 	if (f) fclose(f);
