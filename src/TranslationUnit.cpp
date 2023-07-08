@@ -335,6 +335,7 @@ Vector<u16>* TranslationUnit2Binary(const char* fileName, const char* source, u3
 
 				printf("\n");
 				printf("   %*c |\n", NextTokLineNumChars, ' ');
+				exit(1);
 			}
 
 			/* shows to few arguments error, where expected number of arguments is "ArgsExpected",
